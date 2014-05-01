@@ -1,5 +1,6 @@
 use Irssi;
 use POSIX;
+use LWP::UserAgent;
 use vars qw($VERSION %IRSSI);
 
 $VERSION = "0.1";
@@ -60,23 +61,21 @@ sub notify {
 		return;
 	}
 
-	`/usr/bin/env wget --version`;
-	if ($? != 0) {
-		Irssi::print("IrssiPushover: You'll need to install wget to use IrssiPushover");
-		return;
-	}
-
 	my $api_token = Irssi::settings_get_str('irssipushover_api_token');
 	my $user_token = Irssi::settings_get_str('irssipushover_user_token');
 	my $header = $lastTarget eq "!PRIVATE" ? "$lastNick: " : "$lastTarget $lastNick: ";
 	my $len = 512 - length($header);
 	my @msg = unpack("(A$len)*", $lastMsg);
 	foreach (@msg) {
-		my $data = "--post-data=token=$api_token\\&user=$user_token\\&message=$header$_";
-		my $result = `/usr/bin/env wget --tries=2 --timeout=10 -qO- /dev/null $data https://api.pushover.net/1/messages.json`;
-		if ($? != 0) {
-			Irssi::print("IrssiPushover: Sending notification to server failed.");
-			return;
+		my $result = LWP::UserAgent->new()->post(
+			"https://api.pushover.net/1/messages.json", [
+			"token" => $api_token,
+			"user" => $user_token,
+			"message" => $header . $_, 
+		]);
+		if (!$result->is_success) {
+			my $status = $result->status_line;
+			Irssi::print("IrssiPushover: Failed to send notification: $status.");
 		}
 	}
 }
